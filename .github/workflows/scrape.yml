@@ -1,0 +1,59 @@
+name: Scrape Travel Prices
+
+on:
+  workflow_dispatch:
+    inputs:
+      destination:
+        description: Destination to scrape
+        required: true
+        default: albania
+        type: choice
+        options:
+          - albania
+          - romania
+          - macedonia
+          - both
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Install Playwright Chromium
+        run: uv run playwright install chromium
+
+      - name: Run scraper
+        run: |
+          case "${{ inputs.destination }}" in
+            albania) uv run python -m travel_monitor.main --albania ;;
+            romania) uv run python -m travel_monitor.main --romania ;;
+            macedonia) uv run python -m travel_monitor.main --macedonia ;;
+            both)
+              uv run python -m travel_monitor.main --albania
+              echo "---"
+              uv run python -m travel_monitor.main --romania
+              ;;
+          esac
+
+      - name: Commit price history
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add -f .travel-monitor/price_history.json
+          git diff --cached --quiet || git commit -m "Update price history [skip ci]"
+          git push
