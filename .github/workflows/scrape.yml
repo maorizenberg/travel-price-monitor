@@ -5,16 +5,21 @@ on:
     - cron: "0 6 * * *"
   workflow_dispatch:
     inputs:
-      destination:
-        description: Destination to scrape
-        required: true
-        default: albania
-        type: choice
-        options:
-          - albania
-          - romania
-          - macedonia
-          - both
+      albania:
+        description: Scrape Albania
+        required: false
+        default: false
+        type: boolean
+      romania:
+        description: Scrape Romania
+        required: false
+        default: false
+        type: boolean
+      macedonia:
+        description: Scrape North Macedonia
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   scrape:
@@ -41,18 +46,16 @@ jobs:
 
       - name: Run scraper
         run: |
-          destination="${{ inputs.destination }}"
-          if [ -z "$destination" ]; then destination=both; fi
-          case "$destination" in
-            albania) uv run python -m travel_monitor.main --albania ;;
-            romania) uv run python -m travel_monitor.main --romania ;;
-            macedonia) uv run python -m travel_monitor.main --macedonia ;;
-            both)
-              uv run python -m travel_monitor.main --albania
-              echo "---"
-              uv run python -m travel_monitor.main --romania
-              ;;
-          esac
+          is_scheduled="${{ github.event_name == 'schedule' }}"
+          if [ "$is_scheduled" == "true" ] || [ "${{ inputs.albania }}" == "true" ]; then
+            uv run python -m travel_monitor.main --albania
+          fi
+          if [ "$is_scheduled" == "true" ] || [ "${{ inputs.romania }}" == "true" ]; then
+            uv run python -m travel_monitor.main --romania
+          fi
+          if [ "$is_scheduled" == "true" ] || [ "${{ inputs.macedonia }}" == "true" ]; then
+            uv run python -m travel_monitor.main --macedonia
+          fi
 
       - name: Commit price history
         run: |
