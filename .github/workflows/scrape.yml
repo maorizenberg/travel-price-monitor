@@ -1,6 +1,8 @@
 name: Scrape Travel Prices
 
 on:
+  schedule:
+    - cron: "0 6 * * *"
   workflow_dispatch:
     inputs:
       destination:
@@ -39,7 +41,8 @@ jobs:
 
       - name: Run scraper
         run: |
-          case "${{ inputs.destination }}" in
+          destination="${inputs.destination:-both}"
+          case "$destination" in
             albania) uv run python -m travel_monitor.main --albania ;;
             romania) uv run python -m travel_monitor.main --romania ;;
             macedonia) uv run python -m travel_monitor.main --macedonia ;;
