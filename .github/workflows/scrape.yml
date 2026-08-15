@@ -47,7 +47,7 @@ jobs:
       - name: Run scraper
         run: |
           is_scheduled="${{ github.event_name == 'schedule' }}"
-          if [ "$is_scheduled" == "true" ] || [ "${{ inputs.albania }}" == "true" ]; then
+          if [ "$is_scheduled" == "false" ] && [ "${{ inputs.albania }}" == "true" ]; then
             uv run python -m travel_monitor.main --albania
           fi
           if [ "$is_scheduled" == "true" ] || [ "${{ inputs.romania }}" == "true" ]; then
