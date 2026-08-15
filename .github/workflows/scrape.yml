@@ -41,7 +41,8 @@ jobs:
 
       - name: Run scraper
         run: |
-          destination="${inputs.destination:-both}"
+          destination="${{ inputs.destination }}"
+          if [ -z "$destination" ]; then destination=both; fi
           case "$destination" in
             albania) uv run python -m travel_monitor.main --albania ;;
             romania) uv run python -m travel_monitor.main --romania ;;
