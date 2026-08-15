@@ -46,12 +46,13 @@ class TravelScraper:
         self.stop()
         return False
 
-    def fetch_html(self, url: str, wait_selector: Optional[str] = None) -> str:
+    def fetch_html(self, url: str, wait_selector: Optional[str] = None, wait_until: str = "domcontentloaded") -> str:
         """Fetch fully rendered HTML from a URL.
         
         Args:
             url: The URL to scrape
             wait_selector: Optional CSS selector to wait for before extracting
+            wait_until: Playwright wait condition (default: domcontentloaded)
             
         Returns:
             Fully rendered HTML content
@@ -63,7 +64,7 @@ class TravelScraper:
         
         try:
             logger.info(f"Navigating to {url}")
-            page.goto(url, timeout=self.timeout_ms, wait_until="networkidle")
+            page.goto(url, timeout=self.timeout_ms, wait_until=wait_until)
             
             if wait_selector:
                 logger.info(f"Waiting for selector: {wait_selector}")

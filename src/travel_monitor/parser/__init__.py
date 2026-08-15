@@ -1,5 +1,6 @@
 """BeautifulSoup-based HTML parser for travel package pages."""
 
+import json
 import logging
 import re
 from datetime import date, datetime
@@ -39,6 +40,117 @@ class TripParser:
         """
         soup = BeautifulSoup(html, "lxml")
         
+        # Try JSON-LD first (more reliable for structured data)
+        jsonld_data = self._extract_jsonld(soup)
+        
+        if jsonld_data:
+            trip = self._parse_from_jsonld(jsonld_data, url, html)
+            # If JSON-LD had no price/dates, fallback to HTML parsing
+            if trip.current_price == 0 or trip.departure_date is None:
+                html_trip = self._parse_from_html(soup, url, html)
+                trip.current_price = trip.current_price or html_trip.current_price
+                trip.departure_date = trip.departure_date or html_trip.departure_date
+                trip.return_date = trip.return_date or html_trip.return_date
+                trip.duration_nights = trip.duration_nights or html_trip.duration_nights
+                trip.duration_days = trip.duration_days or html_trip.duration_days
+                trip.availability = trip.availability or html_trip.availability
+                trip.airline = trip.airline or html_trip.airline
+                trip.hotel_name = trip.hotel_name or html_trip.hotel_name
+            return trip
+        
+        # Fallback to HTML parsing
+        return self._parse_from_html(soup, url, html)
+
+    def _extract_jsonld(self, soup: BeautifulSoup) -> Optional[dict]:
+        """Extract and merge JSON-LD structured data."""
+        scripts = soup.find_all("script", type="application/ld+json")
+        merged = {}
+        
+        for script in scripts:
+            try:
+                data = json.loads(script.string)
+                if isinstance(data, dict):
+                    # Merge Trip and Event data
+                    if data.get("@type") in ["Trip", "Event", "TouristAttraction"]:
+                        merged.update(data)
+                    # Extract offers
+                    if "offers" in data:
+                        merged["offers"] = data["offers"]
+            except (json.JSONDecodeError, TypeError):
+                continue
+        
+        return merged if merged else None
+
+    def _parse_from_jsonld(self, data: dict, url: str, html: str) -> TripData:
+        """Parse TripData from JSON-LD structured data."""
+        trip_name = data.get("name", "Unknown Trip")
+        
+        # Extract price from offers
+        price = Decimal("0")
+        currency = "EUR"
+        offers = data.get("offers", {})
+        if isinstance(offers, dict):
+            price_val = offers.get("price", 0)
+            if price_val:
+                price = Decimal(str(price_val))
+            currency = offers.get("priceCurrency", "EUR")
+        
+        # Extract dates
+        departure_date = None
+        return_date = None
+        
+        # Check validFrom/validThrough
+        if "validFrom" in offers:
+            departure_date = self._parse_date(offers["validFrom"])
+        if "validThrough" in offers:
+            return_date = self._parse_date(offers["validThrough"])
+        
+        # Check startDate/endDate (Event type)
+        if not departure_date and "startDate" in data:
+            departure_date = self._parse_date(data["startDate"])
+        if not return_date and "endDate" in data:
+            return_date = self._parse_date(data["endDate"])
+        
+        # Calculate duration
+        duration_nights = None
+        duration_days = None
+        if departure_date and return_date:
+            delta = return_date - departure_date
+            duration_days = delta.days
+            duration_nights = duration_days - 1
+        
+        # Extract availability
+        availability = None
+        if "availability" in offers:
+            avail_url = offers["availability"]
+            if "InStock" in avail_url:
+                availability = "In Stock"
+            elif "OutOfStock" in avail_url:
+                availability = "Out of Stock"
+        
+        # Extract destination from address
+        destination = None
+        address = data.get("address", {})
+        if isinstance(address, dict):
+            destination = address.get("addressLocality")
+        
+        return TripData(
+            url=url,
+            trip_name=trip_name,
+            current_price=price,
+            currency=currency,
+            total_price=price if price > 0 else None,
+            departure_date=departure_date,
+            return_date=return_date,
+            duration_nights=duration_nights,
+            duration_days=duration_days,
+            destination=destination,
+            availability=availability,
+            raw_html=html[:1000] if len(html) > 1000 else html,
+        )
+
+    def _parse_from_html(self, soup: BeautifulSoup, url: str, html: str) -> TripData:
+        """Parse TripData from HTML elements (fallback)."""
         trip_name = self._extract_trip_name(soup)
         price, currency = self._extract_price(soup)
         price_per_person = self._extract_price_per_person(soup)
@@ -108,6 +220,9 @@ class TripParser:
             "[data-price]",
             ".price",
             ".amount",
+            ".payment-title.price-left",
+            ".price-after-discount",
+            ".discount-price",
         ]
         
         for selector in price_selectors:
@@ -197,6 +312,18 @@ class TripParser:
         departure = None
         return_date = None
         
+        # Try eshet.com specific selectors first
+        dep_el = soup.select_one(".row-date")
+        if dep_el:
+            departure = self._parse_date(dep_el.get_text(strip=True))
+        
+        ret_els = soup.select(".col-xs-3.col-md-2")
+        if ret_els and len(ret_els) > 0:
+            return_date = self._parse_date(ret_els[0].get_text(strip=True))
+        
+        if departure and return_date:
+            return departure, return_date
+        
         # Try departure date selectors
         departure_selectors = [
             ".departure-date",
@@ -250,6 +377,7 @@ class TripParser:
         formats = [
             "%d.%m.%Y",
             "%d/%m/%Y",
+            "%d/%m/%y",
             "%Y-%m-%d",
             "%d %B %Y",
             "%d %b %Y",

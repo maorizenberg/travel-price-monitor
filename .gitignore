@@ -12,3 +12,5 @@ build/
 .env
 *.db
 *.sqlite3
+PyWhatKit_DB.txt
+.travel-monitor/
