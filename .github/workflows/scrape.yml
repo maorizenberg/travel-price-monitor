@@ -50,7 +50,7 @@ jobs:
           if [ "$is_scheduled" == "false" ] && [ "${{ inputs.albania }}" == "true" ]; then
             uv run python -m travel_monitor.main --albania
           fi
-          if [ "$is_scheduled" == "true" ] || [ "${{ inputs.romania }}" == "true" ]; then
+          if [ "${{ inputs.romania }}" == "true" ]; then
             uv run python -m travel_monitor.main --romania
           fi
           if [ "$is_scheduled" == "true" ] || [ "${{ inputs.macedonia }}" == "true" ]; then
